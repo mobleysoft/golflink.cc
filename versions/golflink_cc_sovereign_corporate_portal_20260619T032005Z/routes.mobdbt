@@ -1,0 +1,20 @@
+{
+  "format": "mobdbt",
+  "name": "www.golflink.cc_routes",
+  "version": "3.1.0",
+  "description": "www.golflink.cc sovereign edge routes",
+  "venture": "www.golflink.cc",
+  "domain": "www.golflink.cc",
+  "collections": {
+    "routes": [
+      { "pattern": "GET /", "being": "index_being", "auth": false, "file": "index.html" },
+      { "pattern": "GET /*", "being": "home_being", "auth": false, "file": "index.html" }
+    ]
+  },
+  "generator": {
+    "auto_generated": true,
+    "source": "evolution_engine",
+    "gen": 1687,
+    "ts": "2026-04-08T03:23:26Z"
+  }
+}
