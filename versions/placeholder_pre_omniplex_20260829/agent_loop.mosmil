@@ -46,7 +46,7 @@ END PROC
 PROC detect_regime_from_field
   ; Read current field state (Q9.GROUND energy)
   ; This tells us: "how hard should we mine?"
-  HTTP_GET "http://localhost:9339/register/query" R_FIELD_STATE
+  HTTP_GET "/register/query" R_FIELD_STATE
   JSON_PARSE R_FIELD_STATE "Q9.GROUND.energy" R_Q9_ENERGY
 
   ; Adapt batch size based on field energy
@@ -77,7 +77,7 @@ PROC report_yield_to_field
   SET R_YIELD_REPORT "{\"venture\":\"" R_VENTURE "\",\"yield\":" R_HASHRATE ",\"regime\":\"" R_REGIME "\",\"iteration\":" R_ITERATION "}"
 
   ; Report to field (persistent connection, no timeout risk)
-  HTTP_POST "http://localhost:9339/register/yield" R_YIELD_REPORT
+  HTTP_POST "/register/yield" R_YIELD_REPORT
 
   LOG "[divining] yield_reported: venture=" R_VENTURE " yield=" R_HASHRATE
 END PROC
