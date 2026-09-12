@@ -37,6 +37,11 @@
   .honesty { font-size:0.82rem; color:var(--muted); border-top:1px solid var(--border); padding-top:16px; margin-top:8px; }
   footer { max-width:880px; margin:0 auto; padding:24px; color:var(--muted); font-size:0.8rem; }
   a { color: var(--accent); }
+  .stat-grid { display:flex; gap:16px; flex-wrap:wrap; }
+  .stat-tile { flex:1; min-width:140px; background:#0a1120; border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .stat-tile .stat-label { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin-bottom:6px; }
+  .stat-tile .stat-value { font-size:1.6rem; font-weight:600; }
+  .stat-tile .stat-sub { font-size:0.78rem; color:var(--muted); margin-top:4px; }
 </style>
 </head>
 <body>
@@ -82,13 +87,22 @@
   </div>
 
   <div class="card">
+    <h2>Your stats</h2>
+    <div class="stat-grid" id="statsGrid"></div>
+    <div class="empty" id="statsEmptyMsg">Log a few rounds above to see your stats.</div>
+  </div>
+
+  <div class="card">
     <h2>What's real here, what isn't yet</h2>
     <p class="honesty">
       The round ledger above is genuinely persisted (browser localStorage) and genuinely
-      exportable as a portable JSON file — that part of "portable statistics and history ledger"
-      is real today. What's not built yet: cross-device sync, a shareable public identity/profile,
-      and course-level stat aggregation (fairways, GIR, strokes-gained). This page will be extended
-      as those pieces become real.
+      exportable as a portable JSON file, and the stats above (average score, best round,
+      average putts, and a last-5-vs-lifetime score trend) are computed live from that same
+      real data — that part of "portable statistics and history ledger" is real today. What's
+      not built yet: cross-device sync, a shareable public identity/profile, and hole-level
+      stat aggregation (fairways hit, greens in regulation, strokes-gained) — those need
+      per-hole data this page doesn't collect yet. This page will be extended as those pieces
+      become real.
     </p>
   </div>
 </main>
@@ -115,15 +129,59 @@ function render() {
   body.innerHTML = '';
   if (rounds.length === 0) {
     empty.style.display = 'block';
+  } else {
+    empty.style.display = 'none';
+    rounds.slice().reverse().forEach(function(r) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + (r.date || '—') + '</td><td>' + escapeHtml(r.course || '—') +
+        '</td><td>' + (r.score || '—') + '</td><td>' + (r.putts || '—') + '</td>';
+      body.appendChild(tr);
+    });
+  }
+  renderStats(rounds);
+}
+function avg(nums) {
+  return nums.reduce(function(a, b) { return a + b; }, 0) / nums.length;
+}
+function renderStats(rounds) {
+  var grid = document.getElementById('statsGrid');
+  var emptyMsg = document.getElementById('statsEmptyMsg');
+  var scored = rounds.filter(function(r) { return r.score && !isNaN(parseFloat(r.score)); });
+  if (scored.length === 0) {
+    grid.innerHTML = '';
+    emptyMsg.style.display = 'block';
     return;
   }
-  empty.style.display = 'none';
-  rounds.slice().reverse().forEach(function(r) {
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + (r.date || '—') + '</td><td>' + escapeHtml(r.course || '—') +
-      '</td><td>' + (r.score || '—') + '</td><td>' + (r.putts || '—') + '</td>';
-    body.appendChild(tr);
-  });
+  emptyMsg.style.display = 'none';
+  var scores = scored.map(function(r) { return parseFloat(r.score); });
+  var putts = scored.filter(function(r) { return r.putts && !isNaN(parseFloat(r.putts)); })
+    .map(function(r) { return parseFloat(r.putts); });
+  var best = Math.min.apply(null, scores);
+  var lifetimeAvg = avg(scores);
+  var tiles = [
+    { label: 'Rounds logged', value: String(scored.length) },
+    { label: 'Average score', value: lifetimeAvg.toFixed(1) },
+    { label: 'Best round', value: String(best) }
+  ];
+  if (putts.length > 0) {
+    tiles.push({ label: 'Average putts', value: avg(putts).toFixed(1) });
+  }
+  if (scores.length >= 2) {
+    var recent = scores.slice(-5);
+    var recentAvg = avg(recent);
+    var diff = recentAvg - lifetimeAvg;
+    var trendLabel = Math.abs(diff) < 0.05 ? 'Flat' : (diff < 0 ? 'Improving' : 'Trending up');
+    tiles.push({
+      label: 'Last ' + recent.length + ' vs. lifetime',
+      value: trendLabel,
+      sub: recentAvg.toFixed(1) + ' vs ' + lifetimeAvg.toFixed(1) + ' avg'
+    });
+  }
+  grid.innerHTML = tiles.map(function(t) {
+    return '<div class="stat-tile"><div class="stat-label">' + escapeHtml(t.label) +
+      '</div><div class="stat-value">' + escapeHtml(t.value) + '</div>' +
+      (t.sub ? '<div class="stat-sub">' + escapeHtml(t.sub) + '</div>' : '') + '</div>';
+  }).join('');
 }
 function escapeHtml(s) {
   var d = document.createElement('div');
