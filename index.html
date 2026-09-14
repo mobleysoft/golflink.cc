@@ -72,6 +72,14 @@
         <label for="putts">Putts</label>
         <input type="number" id="putts" min="0" max="80" placeholder="30">
       </div>
+      <div class="field">
+        <label for="fairways">Fairways hit (of 14)</label>
+        <input type="number" id="fairways" min="0" max="14" placeholder="optional">
+      </div>
+      <div class="field">
+        <label for="gir">Greens in reg. (of 18)</label>
+        <input type="number" id="gir" min="0" max="18" placeholder="optional">
+      </div>
     </div>
     <button onclick="addRound()">Add to ledger</button>
     <button class="secondary" onclick="exportLedger()">Export ledger (JSON)</button>
@@ -79,7 +87,7 @@
 
     <table id="ledgerTable">
       <thead>
-        <tr><th>Date</th><th>Course</th><th>Score</th><th>Putts</th></tr>
+        <tr><th>Date</th><th>Course</th><th>Score</th><th>Putts</th><th>FW</th><th>GIR</th></tr>
       </thead>
       <tbody id="ledgerBody"></tbody>
     </table>
@@ -97,12 +105,14 @@
     <p class="honesty">
       The round ledger above is genuinely persisted (browser localStorage) and genuinely
       exportable as a portable JSON file, and the stats above (average score, best round,
-      average putts, and a last-5-vs-lifetime score trend) are computed live from that same
-      real data — that part of "portable statistics and history ledger" is real today. What's
-      not built yet: cross-device sync, a shareable public identity/profile, and hole-level
-      stat aggregation (fairways hit, greens in regulation, strokes-gained) — those need
-      per-hole data this page doesn't collect yet. This page will be extended as those pieces
-      become real.
+      average putts, round-level fairways-hit % and greens-in-regulation %, and a
+      last-5-vs-lifetime score trend) are computed live from that same real data — that part
+      of "portable statistics and history ledger" is real today. Fairways/GIR are logged as a
+      single count per round (optional, out of 14/18), not per-hole — true hole-by-hole
+      stats (which hole, strokes-gained) still aren't built, since that needs per-hole data
+      this page doesn't collect yet. What's also not built yet: cross-device sync and a
+      shareable public identity/profile. This page will be extended as those pieces become
+      real.
     </p>
   </div>
 </main>
@@ -134,7 +144,8 @@ function render() {
     rounds.slice().reverse().forEach(function(r) {
       var tr = document.createElement('tr');
       tr.innerHTML = '<td>' + (r.date || '—') + '</td><td>' + escapeHtml(r.course || '—') +
-        '</td><td>' + (r.score || '—') + '</td><td>' + (r.putts || '—') + '</td>';
+        '</td><td>' + (r.score || '—') + '</td><td>' + (r.putts || '—') + '</td><td>' +
+        (r.fairways || '—') + '</td><td>' + (r.gir || '—') + '</td>';
       body.appendChild(tr);
     });
   }
@@ -166,6 +177,16 @@ function renderStats(rounds) {
   if (putts.length > 0) {
     tiles.push({ label: 'Average putts', value: avg(putts).toFixed(1) });
   }
+  var fairwayRounds = scored.filter(function(r) { return r.fairways && !isNaN(parseFloat(r.fairways)); });
+  if (fairwayRounds.length > 0) {
+    var fwPct = avg(fairwayRounds.map(function(r) { return parseFloat(r.fairways) / 14; })) * 100;
+    tiles.push({ label: 'Fairways hit', value: fwPct.toFixed(0) + '%', sub: 'of 14, avg over ' + fairwayRounds.length + ' round(s)' });
+  }
+  var girRounds = scored.filter(function(r) { return r.gir && !isNaN(parseFloat(r.gir)); });
+  if (girRounds.length > 0) {
+    var girPct = avg(girRounds.map(function(r) { return parseFloat(r.gir) / 18; })) * 100;
+    tiles.push({ label: 'Greens in regulation', value: girPct.toFixed(0) + '%', sub: 'of 18, avg over ' + girRounds.length + ' round(s)' });
+  }
   if (scores.length >= 2) {
     var recent = scores.slice(-5);
     var recentAvg = avg(recent);
@@ -193,13 +214,17 @@ function addRound() {
   var date = document.getElementById('date').value;
   var score = document.getElementById('score').value;
   var putts = document.getElementById('putts').value;
+  var fairways = document.getElementById('fairways').value;
+  var gir = document.getElementById('gir').value;
   if (!course || !score) { alert('Course and score are required.'); return; }
   var rounds = loadLedger();
-  rounds.push({ course: course, date: date, score: score, putts: putts, loggedAt: new Date().toISOString() });
+  rounds.push({ course: course, date: date, score: score, putts: putts, fairways: fairways, gir: gir, loggedAt: new Date().toISOString() });
   saveLedger(rounds);
   document.getElementById('course').value = '';
   document.getElementById('score').value = '';
   document.getElementById('putts').value = '';
+  document.getElementById('fairways').value = '';
+  document.getElementById('gir').value = '';
   render();
 }
 function exportLedger() {
