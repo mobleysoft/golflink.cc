@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GolfLink — Portable Golf Stats &amp; History Ledger</title>
-<meta name="description" content="GolfLink: a portable golf statistics, identity, and playing-history ledger. Log rounds, keep them in your browser, export the ledger as JSON.">
+<meta name="description" content="GolfLink: a portable golf statistics, identity, and playing-history ledger. Log rounds, keep them in your browser, export the ledger as JSON, and import it back in on another device.">
 <style>
   :root {
     --bg: #0a0f1a;
@@ -50,7 +50,8 @@
   <h1>GolfLink</h1>
   <p class="lede">A portable golf statistics, identity, and playing-history ledger. This page is a real,
   working version of the core idea, scoped to what a static page can honestly do: your rounds are logged
-  and kept in your own browser, and the whole ledger can be exported as a portable JSON file at any time.</p>
+  and kept in your own browser, and the whole ledger can be exported as a portable JSON file at any time —
+  and that same file can be imported back in on another device or browser to bring your ledger with you.</p>
 </header>
 <main>
   <div class="card">
@@ -83,7 +84,10 @@
     </div>
     <button onclick="addRound()">Add to ledger</button>
     <button class="secondary" onclick="exportLedger()">Export ledger (JSON)</button>
+    <button class="secondary" onclick="document.getElementById('importFile').click()">Import ledger (JSON)</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importLedger(event)">
     <button class="secondary" onclick="clearLedger()">Clear ledger</button>
+    <div class="empty" id="importMsg" style="display:none;"></div>
 
     <table id="ledgerTable">
       <thead>
@@ -110,9 +114,11 @@
       of "portable statistics and history ledger" is real today. Fairways/GIR are logged as a
       single count per round (optional, out of 14/18), not per-hole — true hole-by-hole
       stats (which hole, strokes-gained) still aren't built, since that needs per-hole data
-      this page doesn't collect yet. What's also not built yet: cross-device sync and a
-      shareable public identity/profile. This page will be extended as those pieces become
-      real.
+      this page doesn't collect yet. The exported JSON file can also be imported back in
+      (on this browser or any other), merging in any rounds not already present — that's real,
+      manual, file-based portability across devices. What's still not built: automatic
+      cross-device sync (import is a manual step, not a background sync) and a shareable
+      public identity/profile. This page will be extended as those pieces become real.
     </p>
   </div>
 </main>
@@ -238,6 +244,52 @@ function exportLedger() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+function roundKey(r) {
+  return [r.course, r.date, r.score, r.putts, r.fairways, r.gir, r.loggedAt].join('|');
+}
+function importLedger(event) {
+  var file = event.target.files[0];
+  var msg = document.getElementById('importMsg');
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    var parsed;
+    try {
+      parsed = JSON.parse(reader.result);
+    } catch (e) {
+      msg.textContent = 'Import failed: that file is not valid JSON.';
+      msg.style.display = 'block';
+      event.target.value = '';
+      return;
+    }
+    var incoming = Array.isArray(parsed) ? parsed : parsed.rounds;
+    if (!Array.isArray(incoming)) {
+      msg.textContent = 'Import failed: no "rounds" array found in that file.';
+      msg.style.display = 'block';
+      event.target.value = '';
+      return;
+    }
+    var existing = loadLedger();
+    var seen = {};
+    existing.forEach(function(r) { seen[roundKey(r)] = true; });
+    var added = 0;
+    incoming.forEach(function(r) {
+      if (!r || typeof r !== 'object' || !r.course || !r.score) return;
+      var key = roundKey(r);
+      if (seen[key]) return;
+      seen[key] = true;
+      existing.push(r);
+      added++;
+    });
+    saveLedger(existing);
+    render();
+    var skipped = incoming.length - added;
+    msg.textContent = added + ' round(s) imported' + (skipped > 0 ? ', ' + skipped + ' duplicate/invalid entry(ies) skipped.' : '.');
+    msg.style.display = 'block';
+    event.target.value = '';
+  };
+  reader.readAsText(file);
 }
 function clearLedger() {
   if (confirm('Clear your locally stored round ledger? This cannot be undone.')) {
