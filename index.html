@@ -30,6 +30,8 @@
   button { background:var(--accent); color:#031224; border:none; border-radius:8px; padding:12px 20px; font-weight:600; font-size:0.95rem; cursor:pointer; margin-top:18px; margin-right:10px; }
   button.secondary { background:transparent; color:var(--accent); border:1px solid var(--border); }
   button:hover { filter:brightness(1.1); }
+  button.row-delete { background:transparent; color:var(--muted); border:1px solid var(--border); padding:4px 10px; margin:0; font-size:0.78rem; font-weight:500; }
+  button.row-delete:hover { color:#ff6b6b; border-color:#ff6b6b; filter:none; }
   table { width:100%; border-collapse:collapse; margin-top:18px; font-size:0.9rem; }
   th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); }
   th { color:var(--muted); font-weight:500; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; }
@@ -91,7 +93,7 @@
 
     <table id="ledgerTable">
       <thead>
-        <tr><th>Date</th><th>Course</th><th>Score</th><th>Putts</th><th>FW</th><th>GIR</th></tr>
+        <tr><th>Date</th><th>Course</th><th>Score</th><th>Putts</th><th>FW</th><th>GIR</th><th></th></tr>
       </thead>
       <tbody id="ledgerBody"></tbody>
     </table>
@@ -147,11 +149,13 @@ function render() {
     empty.style.display = 'block';
   } else {
     empty.style.display = 'none';
-    rounds.slice().reverse().forEach(function(r) {
+    rounds.slice().reverse().forEach(function(r, revIdx) {
+      var originalIndex = rounds.length - 1 - revIdx;
       var tr = document.createElement('tr');
       tr.innerHTML = '<td>' + (r.date || '—') + '</td><td>' + escapeHtml(r.course || '—') +
         '</td><td>' + (r.score || '—') + '</td><td>' + (r.putts || '—') + '</td><td>' +
-        (r.fairways || '—') + '</td><td>' + (r.gir || '—') + '</td>';
+        (r.fairways || '—') + '</td><td>' + (r.gir || '—') + '</td><td><button class="row-delete" onclick="deleteRound(' +
+        originalIndex + ')">Delete</button></td>';
       body.appendChild(tr);
     });
   }
@@ -290,6 +294,15 @@ function importLedger(event) {
     event.target.value = '';
   };
   reader.readAsText(file);
+}
+function deleteRound(index) {
+  var rounds = loadLedger();
+  var r = rounds[index];
+  if (!r) return;
+  if (!confirm('Delete the round at ' + (r.course || 'this course') + ' (' + (r.date || 'no date') + ')? This cannot be undone.')) return;
+  rounds.splice(index, 1);
+  saveLedger(rounds);
+  render();
 }
 function clearLedger() {
   if (confirm('Clear your locally stored round ledger? This cannot be undone.')) {
