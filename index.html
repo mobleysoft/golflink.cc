@@ -84,7 +84,8 @@
         <input type="number" id="gir" min="0" max="18" placeholder="optional">
       </div>
     </div>
-    <button onclick="addRound()">Add to ledger</button>
+    <button id="submitBtn" onclick="addRound()">Add to ledger</button>
+    <button class="secondary" id="cancelEditBtn" onclick="cancelEdit()" style="display:none;">Cancel edit</button>
     <button class="secondary" onclick="exportLedger()">Export ledger (JSON)</button>
     <button class="secondary" onclick="document.getElementById('importFile').click()">Import ledger (JSON)</button>
     <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importLedger(event)">
@@ -118,7 +119,8 @@
       stats (which hole, strokes-gained) still aren't built, since that needs per-hole data
       this page doesn't collect yet. The exported JSON file can also be imported back in
       (on this browser or any other), merging in any rounds not already present — that's real,
-      manual, file-based portability across devices. What's still not built: automatic
+      manual, file-based portability across devices. Any logged round can also be edited in
+      place (not just deleted and re-entered) if you misenter a score or date. What's still not built: automatic
       cross-device sync (import is a manual step, not a background sync) and a shareable
       public identity/profile. This page will be extended as those pieces become real.
     </p>
@@ -154,7 +156,8 @@ function render() {
       var tr = document.createElement('tr');
       tr.innerHTML = '<td>' + (r.date || '—') + '</td><td>' + escapeHtml(r.course || '—') +
         '</td><td>' + (r.score || '—') + '</td><td>' + (r.putts || '—') + '</td><td>' +
-        (r.fairways || '—') + '</td><td>' + (r.gir || '—') + '</td><td><button class="row-delete" onclick="deleteRound(' +
+        (r.fairways || '—') + '</td><td>' + (r.gir || '—') + '</td><td><button class="row-delete" onclick="editRound(' +
+        originalIndex + ')">Edit</button> <button class="row-delete" onclick="deleteRound(' +
         originalIndex + ')">Delete</button></td>';
       body.appendChild(tr);
     });
@@ -219,6 +222,8 @@ function escapeHtml(s) {
   d.textContent = s;
   return d.innerHTML;
 }
+var editingIndex = null;
+
 function addRound() {
   var course = document.getElementById('course').value.trim();
   var date = document.getElementById('date').value;
@@ -228,7 +233,15 @@ function addRound() {
   var gir = document.getElementById('gir').value;
   if (!course || !score) { alert('Course and score are required.'); return; }
   var rounds = loadLedger();
-  rounds.push({ course: course, date: date, score: score, putts: putts, fairways: fairways, gir: gir, loggedAt: new Date().toISOString() });
+  if (editingIndex !== null && rounds[editingIndex]) {
+    var original = rounds[editingIndex];
+    rounds[editingIndex] = { course: course, date: date, score: score, putts: putts, fairways: fairways, gir: gir, loggedAt: original.loggedAt };
+    editingIndex = null;
+    document.getElementById('submitBtn').textContent = 'Add to ledger';
+    document.getElementById('cancelEditBtn').style.display = 'none';
+  } else {
+    rounds.push({ course: course, date: date, score: score, putts: putts, fairways: fairways, gir: gir, loggedAt: new Date().toISOString() });
+  }
   saveLedger(rounds);
   document.getElementById('course').value = '';
   document.getElementById('score').value = '';
@@ -236,6 +249,32 @@ function addRound() {
   document.getElementById('fairways').value = '';
   document.getElementById('gir').value = '';
   render();
+}
+function editRound(index) {
+  var rounds = loadLedger();
+  var r = rounds[index];
+  if (!r) return;
+  editingIndex = index;
+  document.getElementById('course').value = r.course || '';
+  document.getElementById('date').value = r.date || '';
+  document.getElementById('score').value = r.score || '';
+  document.getElementById('putts').value = r.putts || '';
+  document.getElementById('fairways').value = r.fairways || '';
+  document.getElementById('gir').value = r.gir || '';
+  document.getElementById('submitBtn').textContent = 'Save changes';
+  document.getElementById('cancelEditBtn').style.display = '';
+  document.getElementById('course').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function cancelEdit() {
+  editingIndex = null;
+  document.getElementById('course').value = '';
+  document.getElementById('date').value = '';
+  document.getElementById('score').value = '';
+  document.getElementById('putts').value = '';
+  document.getElementById('fairways').value = '';
+  document.getElementById('gir').value = '';
+  document.getElementById('submitBtn').textContent = 'Add to ledger';
+  document.getElementById('cancelEditBtn').style.display = 'none';
 }
 function exportLedger() {
   var rounds = loadLedger();
@@ -302,6 +341,7 @@ function deleteRound(index) {
   if (!confirm('Delete the round at ' + (r.course || 'this course') + ' (' + (r.date || 'no date') + ')? This cannot be undone.')) return;
   rounds.splice(index, 1);
   saveLedger(rounds);
+  if (editingIndex !== null) cancelEdit();
   render();
 }
 function clearLedger() {
