@@ -44,6 +44,9 @@
   .stat-tile .stat-label { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin-bottom:6px; }
   .stat-tile .stat-value { font-size:1.6rem; font-weight:600; }
   .stat-tile .stat-sub { font-size:0.78rem; color:var(--muted); margin-top:4px; }
+  #holeDetailSection table { margin-top:10px; }
+  #holeDetailSection th, #holeDetailSection td { padding:4px 8px; }
+  .hole-input { width:64px; padding:6px 8px; font-size:0.9rem; }
 </style>
 </head>
 <body>
@@ -84,6 +87,15 @@
         <input type="number" id="gir" min="0" max="18" placeholder="optional">
       </div>
     </div>
+    <div>
+      <button type="button" class="secondary" id="toggleHolesBtn" onclick="toggleHoleDetail()">+ Add hole-by-hole detail (optional)</button>
+    </div>
+    <div id="holeDetailSection" style="display:none;">
+      <table id="holeTable">
+        <thead><tr><th>Hole</th><th>Par</th><th>Score</th></tr></thead>
+        <tbody id="holeTableBody"></tbody>
+      </table>
+    </div>
     <button id="submitBtn" onclick="addRound()">Add to ledger</button>
     <button class="secondary" id="cancelEditBtn" onclick="cancelEdit()" style="display:none;">Cancel edit</button>
     <button class="secondary" onclick="exportLedger()">Export ledger (JSON)</button>
@@ -114,15 +126,20 @@
       exportable as a portable JSON file, and the stats above (average score, best round,
       average putts, round-level fairways-hit % and greens-in-regulation %, and a
       last-5-vs-lifetime score trend) are computed live from that same real data — that part
-      of "portable statistics and history ledger" is real today. Fairways/GIR are logged as a
-      single count per round (optional, out of 14/18), not per-hole — true hole-by-hole
-      stats (which hole, strokes-gained) still aren't built, since that needs per-hole data
-      this page doesn't collect yet. The exported JSON file can also be imported back in
+      of "portable statistics and history ledger" is real today. Fairways/GIR can still be
+      logged as a single count per round (optional, out of 14/18), or you can optionally log
+      real hole-by-hole detail (par and score for any of the 18 holes) via "Add hole-by-hole
+      detail" — when you do, your "Toughest hole" and "Best hole" (average strokes over/under
+      par per hole number, across every round you've logged detail for) become real stats too,
+      not just round-level ones. True per-hole detail is opt-in per round, so it's only as
+      complete as what you choose to enter. The exported JSON file can also be imported back in
       (on this browser or any other), merging in any rounds not already present — that's real,
       manual, file-based portability across devices. Any logged round can also be edited in
-      place (not just deleted and re-entered) if you misenter a score or date. What's still not built: automatic
-      cross-device sync (import is a manual step, not a background sync) and a shareable
-      public identity/profile. This page will be extended as those pieces become real.
+      place (not just deleted and re-entered) if you misenter a score or date, hole detail
+      included. What's still not built: automatic cross-device sync (import is a manual step,
+      not a background sync), strokes-gained (which needs a real course-difficulty baseline,
+      not just par), and a shareable public identity/profile. This page will be extended as
+      those pieces become real.
     </p>
   </div>
 </main>
@@ -200,6 +217,21 @@ function renderStats(rounds) {
     var girPct = avg(girRounds.map(function(r) { return parseFloat(r.gir) / 18; })) * 100;
     tiles.push({ label: 'Greens in regulation', value: girPct.toFixed(0) + '%', sub: 'of 18, avg over ' + girRounds.length + ' round(s)' });
   }
+  var holeStats = computeHoleStats(rounds);
+  if (holeStats) {
+    tiles.push({
+      label: 'Toughest hole',
+      value: 'Hole ' + holeStats.worst.hole,
+      sub: (holeStats.worst.avgDiff >= 0 ? '+' : '') + holeStats.worst.avgDiff.toFixed(1) + ' vs par, avg over ' + holeStats.worst.count + ' round(s)'
+    });
+    if (holeStats.best.hole !== holeStats.worst.hole) {
+      tiles.push({
+        label: 'Best hole',
+        value: 'Hole ' + holeStats.best.hole,
+        sub: (holeStats.best.avgDiff >= 0 ? '+' : '') + holeStats.best.avgDiff.toFixed(1) + ' vs par, avg over ' + holeStats.best.count + ' round(s)'
+      });
+    }
+  }
   if (scores.length >= 2) {
     var recent = scores.slice(-5);
     var recentAvg = avg(recent);
@@ -222,6 +254,84 @@ function escapeHtml(s) {
   d.textContent = s;
   return d.innerHTML;
 }
+function computeHoleStats(rounds) {
+  var perHole = {};
+  rounds.forEach(function(r) {
+    if (!Array.isArray(r.holes)) return;
+    r.holes.forEach(function(h) {
+      if (!h) return;
+      var par = parseFloat(h.par);
+      var score = parseFloat(h.score);
+      if (isNaN(par) || isNaN(score)) return;
+      var num = h.hole;
+      if (!perHole[num]) perHole[num] = { sum: 0, count: 0 };
+      perHole[num].sum += (score - par);
+      perHole[num].count += 1;
+    });
+  });
+  var holeNums = Object.keys(perHole);
+  if (holeNums.length === 0) return null;
+  var best = null, worst = null;
+  holeNums.forEach(function(num) {
+    var avgDiff = perHole[num].sum / perHole[num].count;
+    var entry = { hole: num, avgDiff: avgDiff, count: perHole[num].count };
+    if (!worst || avgDiff > worst.avgDiff) worst = entry;
+    if (!best || avgDiff < best.avgDiff) best = entry;
+  });
+  return { best: best, worst: worst };
+}
+function buildHoleRows() {
+  var body = document.getElementById('holeTableBody');
+  var rows = '';
+  for (var h = 1; h <= 18; h++) {
+    rows += '<tr><td>' + h + '</td>' +
+      '<td><input type="number" class="hole-input" id="holePar' + h + '" min="3" max="6"></td>' +
+      '<td><input type="number" class="hole-input" id="holeScore' + h + '" min="1" max="15"></td></tr>';
+  }
+  body.innerHTML = rows;
+}
+function toggleHoleDetail() {
+  var section = document.getElementById('holeDetailSection');
+  var btn = document.getElementById('toggleHolesBtn');
+  var show = section.style.display === 'none';
+  section.style.display = show ? 'block' : 'none';
+  btn.textContent = show ? '- Hide hole-by-hole detail' : '+ Add hole-by-hole detail (optional)';
+}
+function collectHoleData() {
+  var holes = [];
+  for (var h = 1; h <= 18; h++) {
+    var parEl = document.getElementById('holePar' + h);
+    var scoreEl = document.getElementById('holeScore' + h);
+    var par = parEl ? parEl.value : '';
+    var score = scoreEl ? scoreEl.value : '';
+    if (par !== '' && score !== '') {
+      holes.push({ hole: h, par: parseFloat(par), score: parseFloat(score) });
+    }
+  }
+  return holes;
+}
+function populateHoleData(holes) {
+  clearHoleInputs();
+  if (!holes || holes.length === 0) return;
+  document.getElementById('holeDetailSection').style.display = 'block';
+  document.getElementById('toggleHolesBtn').textContent = '- Hide hole-by-hole detail';
+  holes.forEach(function(h) {
+    var parEl = document.getElementById('holePar' + h.hole);
+    var scoreEl = document.getElementById('holeScore' + h.hole);
+    if (parEl) parEl.value = h.par;
+    if (scoreEl) scoreEl.value = h.score;
+  });
+}
+function clearHoleInputs() {
+  for (var h = 1; h <= 18; h++) {
+    var parEl = document.getElementById('holePar' + h);
+    var scoreEl = document.getElementById('holeScore' + h);
+    if (parEl) parEl.value = '';
+    if (scoreEl) scoreEl.value = '';
+  }
+  document.getElementById('holeDetailSection').style.display = 'none';
+  document.getElementById('toggleHolesBtn').textContent = '+ Add hole-by-hole detail (optional)';
+}
 var editingIndex = null;
 
 function addRound() {
@@ -233,14 +343,18 @@ function addRound() {
   var gir = document.getElementById('gir').value;
   if (!course || !score) { alert('Course and score are required.'); return; }
   var rounds = loadLedger();
+  var holes = collectHoleData();
+  var roundObj = { course: course, date: date, score: score, putts: putts, fairways: fairways, gir: gir };
+  if (holes.length > 0) roundObj.holes = holes;
   if (editingIndex !== null && rounds[editingIndex]) {
-    var original = rounds[editingIndex];
-    rounds[editingIndex] = { course: course, date: date, score: score, putts: putts, fairways: fairways, gir: gir, loggedAt: original.loggedAt };
+    roundObj.loggedAt = rounds[editingIndex].loggedAt;
+    rounds[editingIndex] = roundObj;
     editingIndex = null;
     document.getElementById('submitBtn').textContent = 'Add to ledger';
     document.getElementById('cancelEditBtn').style.display = 'none';
   } else {
-    rounds.push({ course: course, date: date, score: score, putts: putts, fairways: fairways, gir: gir, loggedAt: new Date().toISOString() });
+    roundObj.loggedAt = new Date().toISOString();
+    rounds.push(roundObj);
   }
   saveLedger(rounds);
   document.getElementById('course').value = '';
@@ -248,6 +362,7 @@ function addRound() {
   document.getElementById('putts').value = '';
   document.getElementById('fairways').value = '';
   document.getElementById('gir').value = '';
+  clearHoleInputs();
   render();
 }
 function editRound(index) {
@@ -261,6 +376,7 @@ function editRound(index) {
   document.getElementById('putts').value = r.putts || '';
   document.getElementById('fairways').value = r.fairways || '';
   document.getElementById('gir').value = r.gir || '';
+  populateHoleData(r.holes);
   document.getElementById('submitBtn').textContent = 'Save changes';
   document.getElementById('cancelEditBtn').style.display = '';
   document.getElementById('course').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -273,6 +389,7 @@ function cancelEdit() {
   document.getElementById('putts').value = '';
   document.getElementById('fairways').value = '';
   document.getElementById('gir').value = '';
+  clearHoleInputs();
   document.getElementById('submitBtn').textContent = 'Add to ledger';
   document.getElementById('cancelEditBtn').style.display = 'none';
 }
@@ -289,7 +406,8 @@ function exportLedger() {
   URL.revokeObjectURL(url);
 }
 function roundKey(r) {
-  return [r.course, r.date, r.score, r.putts, r.fairways, r.gir, r.loggedAt].join('|');
+  var holesKey = Array.isArray(r.holes) ? r.holes.map(function(h) { return h.hole + ':' + h.par + ':' + h.score; }).join(',') : '';
+  return [r.course, r.date, r.score, r.putts, r.fairways, r.gir, r.loggedAt, holesKey].join('|');
 }
 function importLedger(event) {
   var file = event.target.files[0];
@@ -350,6 +468,7 @@ function clearLedger() {
     render();
   }
 }
+buildHoleRows();
 render();
 </script>
 </body>
